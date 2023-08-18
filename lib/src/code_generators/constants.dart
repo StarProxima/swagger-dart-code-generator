@@ -97,6 +97,7 @@ const kEnumNames = 'x-enumNames';
 const kEnumVarnames = 'x-enum-varnames';
 const kIsNullable = 'x-nullable';
 const kNullable = 'nullable';
+const kNull = 'null';
 
 const kServiceHeader = '''
 // **************************************************************************

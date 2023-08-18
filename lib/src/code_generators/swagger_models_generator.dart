@@ -357,7 +357,11 @@ abstract class SwaggerModelsGenerator extends SwaggerGeneratorBase {
     }
 
     if (parameter.hasRef) {
-      return parameter.ref.split('/').last.pascalCase;
+      return parameter.ref.getRef();
+    }
+
+    if (parameter.type.isEmpty) {
+      parameter = parameter.anyOf.first;
     }
 
     switch (parameter.type) {
@@ -558,6 +562,7 @@ static $returnType $fromJsonFunction($valueType? value) => $enumNameCamelCase$fr
   ) {
     if (options.nullableModels.contains(className) ||
         !requiredProperties.contains(propertyKey) ||
+        prop.anyOf.any((element) => element.type == kNull) ||
         prop.isNullable == true) {
       return typeName.makeNullable();
     }
@@ -669,6 +674,72 @@ static $returnType $fromJsonFunction($valueType? value) => $enumNameCamelCase$fr
 
     typeName =
         nullable(typeName, className, requiredProperties, propertyKey, prop);
+
+    return '\t$jsonKeyContent\tfinal $typeName $propertyName;${unknownEnumValue.fromJson}';
+  }
+
+  String generatePropertyContentByAnyOf({
+    required SwaggerSchema prop,
+    required String propertyKey,
+    required String className,
+    required List<String> allEnumNames,
+    required List<String> allEnumListNames,
+    required String propertyName,
+    required List<String> requiredProperties,
+    required Map<String, String> basicTypesMap,
+  }) {
+    final anyOf = prop.anyOf;
+    String typeName;
+
+    if (anyOf
+            .where((element) =>
+                element.ref.isNotEmpty || element.properties.isNotEmpty)
+            .length >
+        1) {
+      typeName = kDynamic;
+    } else {
+      var className = anyOf.first.ref.getRef();
+
+      if (allEnumNames.contains(className)) {
+        className = 'enums.$className';
+      }
+
+      typeName = getValidatedClassName(className);
+
+      if (typeName.isEmpty) {
+        typeName = getParameterTypeName(
+          className,
+          propertyKey,
+          prop,
+          options.modelPostfix,
+          null,
+        );
+      }
+    }
+
+    if (basicTypesMap.containsKey(typeName)) {
+      typeName = basicTypesMap[typeName]!;
+    }
+
+    final includeIfNullString = generateIncludeIfNullString();
+
+    final unknownEnumValue = generateEnumValue(
+      allEnumNames: allEnumNames,
+      allEnumListNames: allEnumListNames,
+      propertyName: propertyName,
+      typeName: typeName,
+      defaultValue: prop.defaultValue,
+      isList: false,
+    );
+
+    final jsonKeyContent =
+        "@JsonKey(name: '${_validatePropertyKey(propertyKey)}'$includeIfNullString${unknownEnumValue.jsonKey})\n";
+
+    typeName =
+        nullable(typeName, className, requiredProperties, propertyKey, prop);
+
+    print(
+        '\t$jsonKeyContent\tfinal $typeName $propertyName;${unknownEnumValue.fromJson}');
 
     return '\t$jsonKeyContent\tfinal $typeName $propertyName;${unknownEnumValue.fromJson}';
   }
@@ -1108,6 +1179,19 @@ static $returnType $fromJsonFunction($valueType? value) => $enumNameCamelCase$fr
       } else if (prop.allOf.isNotEmpty) {
         results.add(
           generatePropertyContentByAllOf(
+            prop: prop,
+            allEnumListNames: allEnumListNames,
+            className: className,
+            allEnumNames: allEnumNames,
+            propertyKey: propertyKey,
+            propertyName: propertyName,
+            basicTypesMap: basicTypesMap,
+            requiredProperties: requiredProperties,
+          ),
+        );
+      } else if (prop.anyOf.isNotEmpty) {
+        results.add(
+          generatePropertyContentByAnyOf(
             prop: prop,
             allEnumListNames: allEnumListNames,
             className: className,
